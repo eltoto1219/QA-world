@@ -1,0 +1,8 @@
+data_gqa/
+data_visual_genome/
+data_vqa/
+data_lxmert/
+augment_data_old/
+phase_1/
+phase_2/
+phase_3/
