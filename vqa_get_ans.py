@@ -10,7 +10,6 @@ from num2words import num2words
 
 MIN = 6
 
-
 train_data = []
 val_data = []
 

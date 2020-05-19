@@ -1,3 +1,18 @@
+"""
+    info in form
+    {
+    img_id:
+        [
+            {
+                "object": NAME,
+                "id": ID,
+                "box": [x,y,h,w],
+                "attributes": [NAMES],
+                "relations": [[RELATION, RELATED_ID]],
+            }
+        ]
+    }
+"""
 import json
 from utils import loadJson, loadTxt, makeTxt, makeJson, word2alternatives
 from collections import defaultdict, Counter
@@ -6,12 +21,12 @@ from autocorrect import Speller
 SPELL = Speller(lang='en')
 PUNC = set(w for w in "!@#$%^&*()-.?)")
 TINY = False
-MIN = 20
+MIN = 15
 #data to load
 relations = loadTxt("phase_1/relations")
 attributes = loadTxt("phase_1/attributes")
 objects = loadTxt("phase_1/objects")
-answers = loadTxt("phase_1/gqa_answers")
+#answers = loadTxt("phase_1/gqa_answers")
 #data to make
 obj2id = defaultdict(list)
 id2obj = {}
@@ -67,21 +82,6 @@ def customCheck(word, set2check):
 
 print("LOADING")
 vg = loadJson("data_visual_genome/scene_graphs")
-"""
-    info in form
-    {
-    img_id:
-        [
-            {
-                "object": NAME,
-                "id": ID,
-                "box": [x,y,h,w],
-                "attributes": [NAMES],
-                "relations": [[RELATION, RELATED_ID]],
-            }
-        ]
-    }
-"""
 for scene in tqdm(vg):
 
     img_id = scene["image_id"]
@@ -172,9 +172,9 @@ for scene in tqdm(vg):
     graphs[img_id] = img_info
 
 # FILTER OUT ENTITIES BELOW THRESHHOLD
-uniq_relations = {c for c,i in uniq_relations.items() if i > MIN}
-uniq_objects = {c for c,i in uniq_objects.items() if i > MIN}
-uniq_attributes = {c for c,i in uniq_attributes.items() if i > MIN}
+uniq_relations = {c for c,i in uniq_relations.items() if i >= MIN}
+uniq_objects = {c for c,i in uniq_objects.items() if i >= MIN}
+uniq_attributes = {c for c,i in uniq_attributes.items() if i >= MIN}
 accept_rels = uniq_relations.union(relations)
 accept_objs = uniq_objects.union(objects)
 accept_atts = uniq_attributes.union(attributes)
@@ -200,7 +200,6 @@ for k in tqdm(graphs):
 print("UNIQUE ATTRS", len(uniq_attributes))
 print("UNIQUE OBJECTS", len(uniq_objects))
 print("UNIQUE RELATIONS", len(uniq_relations))
-
 makeTxt(uniq_attributes, "phase_2/visual_genome_attributes")
 makeTxt(uniq_objects, "phase_2/visual_genome_objects")
 makeTxt(uniq_relations, "phase_2/visual_genome_relations")

@@ -163,7 +163,8 @@ def existPersonalPronoun(d_pos, sent):
 # WORDNET FUNCTIONS
 
 def synsetWordEquality(word_q, word_k):
-    if word_k in word_q or word_q in word_k or wn.morphy(word_k) == wn.morphy(word_q):
+    if word_k in word_q or word_q in word_k\
+    or wn.morphy(word_k) == wn.morphy(word_q):
         return True
     else:
         False
@@ -205,24 +206,6 @@ def getSynsets(word, pos = None):
         return s
     elif type(pos) is str:
         return wn.synsets(word, pos=pos)
-
-def matchSynsetDefintionPOS(word, d_pos, synset, word_in_def):
-    match_def = False
-    def_sent = cleanSynsetDefinition(synset.definition())
-    d_pos_list = []
-    tagged, tokenized = sentWordType(def_sent)
-    if dposMatchPersonalNoun(d_pos, tagged) and len(tagged["lookup"]) > 0:
-        if word in def_sent:
-            for def_sent_i, d_pos_def in tagged["dpos"].items():
-                def_word = tokenized[def_sent_i]
-                if synsetWordEquality(word, def_word):
-                    if equalityDpos(d_pos_def, d_pos):
-                        ind_def = True
-                        d_pos_list.append(d_pos_def)
-            return match_def, d_pos_list, def_sent
-        else:
-            return True, d_pos_list, def_sent
-    return False, d_pos_list, def_sent
 
 def makeSynonymData(data: dict, objects: set, pos=None):
     for o in objects:
@@ -399,11 +382,16 @@ def loadGQAData(split_subset, base_path, *args):
             t = "balanced"
         else:
             t = split_subset
-        try:
+        if split_subset == "all" and arg == "train":
+            splt = {}
+            files = [base_path + "train_all_questions/" + o\
+                        for o in os.listdir(
+                        base_path + "train_all_questions/")]
+            for fi in files:
+                splt = {**json.load(open(fi)), **splt}
+        else:
             splt = json.load(open( base_path + "{}_{}_questions.json".format(arg,t), "r"))
-            data = {**data, **splt}
-        except FileNotFoundError:
-            print("WARNING: split ({}) not found".format(arg))
+        data = {**data, **splt}
     assert len(data) != 0, "... no data loaded ..."
     return data
 
@@ -465,8 +453,70 @@ def intersect(*args)  -> set:
     return set.intersection(*group)
 
 
-
 # GENERAL FUNCTIONS
+
+def calculate_iou(boxA, boxB):
+        # determine the (x, y)-coordinates of the intersection rectangle
+        xA = max(boxA[0], boxB[0])
+        yA = max(boxA[1], boxB[1])
+        xB = min(boxA[2], boxB[2])
+        yB = min(boxA[3], boxB[3])
+        # compute the area of intersection rectangle
+        interArea = max(0, xB - xA + 1) * max(0, yB - yA + 1)
+        # compute the area of both the prediction and ground-truth
+        # rectangles
+        boxAArea = (boxA[2] - boxA[0] + 1) * (boxA[3] - boxA[1] + 1)
+        boxBArea = (boxB[2] - boxB[0] + 1) * (boxB[3] - boxB[1] + 1)
+        # compute the intersection over union by taking the intersection
+        # area and dividing it by the sum of prediction + ground-truth
+        # areas - the interesection area
+        denom = max(float(boxAArea + boxBArea - interArea), float(1))
+        iou = interArea / denom
+        # return the intersection over union value
+        return iou * 100
+
+
+
+def substring(x, y):
+    m = len(x)
+    n = len(y)
+    x = [c for c in x]
+    y = [c for c in y]
+    c = np.zeros((m+1, n+1))
+    seq = ""
+    result = 0
+    for i in range(m+1):
+        old = len(seq)
+        for j in range(n+1):
+            if i == 0 or j == 0 :
+                c[i][j] = 0
+            elif x[i-1] == y[j-1]:
+                c[i][j] = c[i-1][j-1]+1
+                if len(seq) == old and c[i][j] > result:
+                    seq += y[j-1]
+                    #row col for storing max val
+                    row = i
+                    col = j
+                result = max(result, c[i][j])
+            else:
+                c[i][j] = 0
+    assert len(seq) == result
+    return c, seq, result, (row, col)
+
+#official method to retrieve the longest common substring
+def getLCS(X, c, length, row, col):
+    X = [x for x in X]
+    length = int(length)
+    if length == 0:
+        #print("No Common Substring")
+        return
+    result = ""
+    while c[row][col] != 0:
+        length -= 1
+        result += X[row -1]
+        row -= 1
+        col -= 1
+    return result[::-1]
 
 def compound2ignore(word):
     word = " " + word + " "
@@ -474,16 +524,14 @@ def compound2ignore(word):
         return True
     return False
 
-def fromOrdinal(word):
+def isOrdinal(word):
     og = word
-    if not word:
-        return False
-    elif len(word.split(" ")) > 1:
-        return False
+    if len(word.split(" ")) > 1:
+        return word
     else:
         word = re.findall('\d+', word)
         if not word:
-            return False
+            return og
         if len(word) > 1:
             return False
         elif og[-2:] in ["st" "nd", "rd", "th"]:
@@ -491,8 +539,6 @@ def fromOrdinal(word):
             return num2words(int(word), ordinal =True)
         else:
             return False
-
-
 
 
 def processPunctuation(inText):
@@ -570,42 +616,6 @@ def isBinary(ans):
         return True
     return False
 
-def getAttributesAndRelations(scene_i, obj2id, id2obj, attributes, objects, relations, objid2relations, objid2attributes, objname2relations, objname2attributes):
-    for obj_id, obj in scene_i["objects"].items():
-            obj_name = obj["name"]
-            objects.add(obj_name)
-            obj2id[obj_name] = obj_id
-            id2obj[obj_id] = obj_name
-            #make attributes info
-            for att in obj["attributes"]:
-                attributes.add(att)
-
-                if obj_id not in objid2relations:
-                    objid2attributes[obj_id] = set([att])
-                else:
-                    objid2attributes[obj_id].add(att)
-
-                if obj_name not in objname2attributes:
-                    objname2attributes[obj_name] = set([att])
-                else:
-                    objname2attributes[obj_name].add(att)
-
-            #make realtions info
-            for related_info in obj["relations"]:
-                relation = related_info["name"]
-                obj_related = related_info["object"]
-                relations.add(relation)
-
-                if obj_id not in objid2relations:
-                    objid2relations[obj_id] = set([relation])
-                else:
-                    objid2relations[obj_id].add(relation)
-
-                if obj_name not in objname2relations:
-                    objname2relations[obj_name] = set([relation])
-                else:
-                    objname2relations[obj_name].add(relation)
-
 def word2alternatives(word):
     clean = word.replace("'", "").lower()
     candidates = [word]
@@ -633,13 +643,12 @@ def word2alternatives(word):
             other.append(p)
     return candidates + other
 
-
 def getTrueNouns(sent, overlap_objs,
         relations, attributes, objects, qid_objects):
     len_sent = len(sent.split(" "))
     nouns = getNouns(sent)
     if PRINT:
-        print("PRE NOUNS", nouns)
+        print(nouns)
     compound_inds = []
     cur_r = min(5, len_sent -1)
     #glue together words that exist as compound words
@@ -650,43 +659,27 @@ def getTrueNouns(sent, overlap_objs,
             compound_inds += cw
         cur_r -= 1
         if PRINT:
-            print("WOOLA obj", cw)
+            print(cw)
     cur_r = min(5, len_sent -1)
     #glue together words that exist as compound relations
     while(cur_r >= 1):
         cw = getCompoundInList(
                 sent.replace("?","").split(" "), sent, relations, radius = cur_r)
         if PRINT:
-            print("WOOLA", cw)
+            print(cw)
         if cw:
             compound_inds += cw
         cur_r -= 1
     if PRINT:
-        print("COMPOUND", compound_inds)
+        print(compound_inds)
     #delete compound objects/relations
     if compound_inds:
         for (cw, c_inds) in compound_inds:
             for ind in c_inds:
                 if ind in nouns:
                     nouns.pop(ind)
-            #if cw in overlap_objs or cw in relations:
-            #    cw_l = len(c_inds)
-            #    s = 0
-            #    e  = cw_l
-            #    found = False
-            #    while(e <= len(nouns)):
-            #        seq == " ".join(nouns)
-            #        if seq == cw:
-            #            found = True
-            #            for i in range(s, e):
-            #                nouns.pop(i)
-            #            break
-            #        s += 1
-            #        e += 1
-            #    if not found:
-            #        print("THIS IS THE THING NOT FOUND", seq, "REALLY", cw)
     if PRINT:
-        print("PRE LEFT", nouns)
+        print(nouns)
 
     #now check other last conditions
     nouns = deepcopy(list(nouns.values()))
@@ -696,7 +689,7 @@ def getTrueNouns(sent, overlap_objs,
         cand_n in INVALID_NOUNS:
             nouns.pop(i)
     if PRINT:
-        print("MID LEFT", nouns)
+        print(nouns)
 
     for i, cand_n in enumerate(nouns):
         for cand_alt in word2alternatives(cand_n):
@@ -706,7 +699,7 @@ def getTrueNouns(sent, overlap_objs,
                 if cand_n in nouns:
                     nouns.remove(cand_n)
     if PRINT:
-        print("POST LEFT", nouns)
+        print(nouns)
     return nouns
 
 def getCompoundInList(list2check, sent2check, set2check, radius = 5):

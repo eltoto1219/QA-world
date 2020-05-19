@@ -1,28 +1,24 @@
-from utils import makeJson, makeTxt, loadTxt, loadJson, loadGQAData, FindInParens, getTrueNouns, word2alternatives, getCompoundInList, INVALID_NOUNS,CONVERT
+from utils import makeJson, makeTxt, loadTxt, loadJson, loadGQAData, FindInParens, getTrueNouns, word2alternatives, getCompoundInList, INVALID_NOUNS,CONVERT, substring, getLCS
 from collections import defaultdict, Counter
 from tqdm import tqdm
 import re
 from shapely.geometry import Polygon
 import statistics
 from nltk import word_tokenize, pos_tag, download
-from nltk.corpus import wordnet as wn #download('wordnet')`
+from nltk.corpus import wordnet as wn
 import inflect
 from copy import deepcopy
-from substring import substring, getLCS
 
 PRINT = False
 ISGQA = True
-
 relations = loadTxt("phase_1/relations")
 attributes = loadTxt("phase_1/attributes")
 objects = loadTxt("phase_1/objects")
-id2obj = loadJson("phase_1/id2obj")
-
+id2obj = loadJson("phase_1/gqa_id2obj")
 if ISGQA:
-    img2sg_bb = loadJson("phase_1/img2sg_bb")
-    imgId2objs = loadJson("phase_1/img2objs")
-    splits = ["val"]
-    subsets = ["all"]
+    graphs = loadJson("phase_1/gqa_img2info")
+    splits = ["val", "train"]
+    subsets = ["balanced", "all"]
     train_annos = []
     val_annos = []
     all_answers = set()
@@ -59,12 +55,13 @@ for split in splits:
                 uniq_attrs.remove(answer)
             if answer in uniq_rels:
                 uniq_rels.remove(answer)
-            try:
-                if ISGQA:
-                    image = v["imageId"]
-                    img_objs = set(imgId2objs[image].values())
-            except:
-                continue
+            #try:
+            if ISGQA:
+                image = v["imageId"]
+                img_objs = set([o["name"] for o in graphs[image]])
+            #except:
+            #    print("FAIL")
+            #    continue
 
             #get overlapping objects from question annotaitons
             if ISGQA:
@@ -240,17 +237,16 @@ for split in splits:
 
             data.append(target)
 
+    if split == "train" and substet == "balanced":
+        makeJson(ambigous_objects, "phase_1/gqa_abg_relations")
+        makeJson(qid2normOverlap, "phase_1/gqa_qid2normOverlap")
+        makeJson(qid2ambgOverlap, "phase_1/gqa_qid2ambgOverlap")
+        makeTxt(all_answers, "phase_1/gqa_answers")
+        makeTxt(uniq_attrs, "phase_1/uniq_attrs")
+        makeTxt(uniq_objs, "phase_1/uniq_objs")
+        makeTxt(uniq_rels, "phase_1/uniq_rels")
     makeJson(data, "phase_1/" + name)
 
 print("% normal overlap", (n_with_overlap/total_data)*100)
 print("% ambigous overlap", (n_with_ambigous/total_data)*100)
 print("% no overlap", (n_with_none/total_data)*100)
-
-
-#makeJson(ambigous_objects, "phase_1/gqa_abg_relations")
-#makeJson(qid2normOverlap, "phase_1/gqa_qid2normOverlap")
-#makeJson(qid2ambgOverlap, "phase_1/gqa_qid2ambgOverlap")
-#makeTxt(all_answers, "phase_1/gqa_answers")
-#makeTxt(uniq_attrs, "phase_1/uniq_attrs")
-#makeTxt(uniq_objs, "phase_1/uniq_objs")
-#makeTxt(uniq_rels, "phase_1/uniq_rels")

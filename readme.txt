@@ -4,11 +4,12 @@ does not matter
 
 [step 1]
 gqa_get_graphs.py
-gqa_get_objects.py
+gqa_get_extra.py (optional)
 [step 2]
-gqa_get_ans.py
+gqa_make_qa.py
 [step 3]
 vqa_get_answers.py
-visual_genome_get_objs.py
+visual_genome_get_graphs.py
 [step 4]
 vqa_get_questions.py
+vqa_make_qa.py
