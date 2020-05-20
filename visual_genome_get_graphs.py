@@ -14,15 +14,15 @@
     }
 """
 import json
-from utils import loadJson, loadTxt, makeTxt, makeJson, word2alternatives
+from utils import loadJson, loadTxt, makeTxt, makeJson, word2alternatives, INVALID_NOUNS
 from collections import defaultdict, Counter
 from tqdm import tqdm
 from autocorrect import Speller
 SPELL = Speller(lang='en')
-PUNC = set(w for w in "!@#$%^&*()-.?)")
+PUNC = set("!@#$%^&*()-.?)")
 TINY = False
-MIN = 15
-#data to load
+MIN = 14
+# to load
 relations = loadTxt("phase_1/relations")
 attributes = loadTxt("phase_1/attributes")
 objects = loadTxt("phase_1/objects")
@@ -49,14 +49,14 @@ def getObjfromID(obj_id, img_info):
     else:
         pass
 
-def customCheck(word, set2check):
+def customCheck(word, set2check, objs = False):
     og = word
-    if not word or len(word) == 1:
+    chars = set(word)
+    if not word or len(word) == 1 or (objs and len(word) <= 2):
         return []
-    chars = [w for w in word]
-    if list(filter(lambda x: x.isdigit(), chars)):
+    if any(map(lambda x: x.isdigit(), chars)):
         return []
-    bad = set(chars).intersection(PUNC)
+    bad = chars.intersection(PUNC)
     for b in bad:
         word = word.replace(b, "")
     try:
@@ -67,17 +67,21 @@ def customCheck(word, set2check):
     except Exception:
         spelling = "INVALID"
     word = spelling if word!= spelling else word
-    if len([c for c in chars if c == " "]) == 1:
+    if word in INVALID_NOUNS or (objs and word in relations):
+        return []
+    if word.count(" ") == 1:
         split = word.split(" ")
         if (split[0] in attributes \
                 or split[0].isdigit()\
                 or len(split[0]) ==1)\
                 or split[0] in relations\
                 and split[1] in set2check:
-                    word = split[1]
+                    return [split[0]]
+    if word in INVALID_NOUNS or (objs and word in relations):
+        return []
     cands = word2alternatives(word)
     if og not in cands:
-        cands += og
+        cands.append(og)
     return cands
 
 print("LOADING")
@@ -111,7 +115,7 @@ for scene in tqdm(vg):
                 for s in o["synsets"]]
         names = list(map(lambda x: x.lower(), names))
         for n in names:
-            for n_alt in customCheck(n, objects):
+            for n_alt in customCheck(n, objects, objs = True):
                 all_names.add(n_alt)
         # the name must exist
         if all_names:

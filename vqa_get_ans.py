@@ -8,7 +8,9 @@ import re
 from collections import defaultdict
 from num2words import num2words
 
-MIN = 6
+
+
+MIN = 9
 
 train_data = []
 val_data = []
@@ -16,6 +18,8 @@ val_data = []
 #data to make
 ans_count = Counter()
 ans2num = {}
+PUNC = set("!@#$%^&*()-.?)")
+VOWELS = set("aeiouy")
 num_ans = 0
 total_trash = 0
 total_data = 0
@@ -39,6 +43,28 @@ uniq = union(uniq_attributes, uniq_relations, uniq_objects)
 gqa_answers = loadTxt("phase_1/gqa_answers")
 
 #funcs
+
+def stripPunc(word, w_type="any"):
+    n_spaces = word.count(" ")
+    if word.isalpha() and len(word) <= 2:
+        return False
+    chars = set(word)
+    for p in chars.intersection(PUNC):
+        if p != "/":
+            word = word.replace(p, "")
+        else:
+            splt = p.split(-1)
+            if splt in union(uniq, gqa_answers) and splt.isalpha():
+                return splt
+            else:
+                word = word.replace(p, "")
+    if all(map(lambda x: x.isdigit() or x == " ", word)) and w_type is not "number":
+        return False
+    if not word:
+        return False
+    if not chars.intersection(VOWELS):
+        return False
+    return word
 
 def keepCompound(word):
     aug = set(word.split(" "))
@@ -79,7 +105,7 @@ def isOrdinal(word):
             return False
 
 #data to make
-for z in ["val"]:
+for z in ["val", "train"]:
     data = loadJson("data_vqa/v2_mscoco_{}2014_annotations".format(z))["annotations"]
     total_data += len(data)
     if z == "train":
@@ -91,20 +117,21 @@ for z in ["val"]:
         qid = a["question_id"]
         img_id = a["image_id"]
         a_type = a["answer_type"]
-        gt = a["multiple_choice_answer"].lower()
-        ans_count[gt] += 1
-        if gt not in ans2num:
+        gt = stripPunc(a["multiple_choice_answer"].lower(), a_type)
+        if gt:
+            ans_count[gt] += 1
+        if gt and gt not in ans2num:
             ans2num[gt] = num_ans
             num_ans += 1
         answers = Counter()
         for n in a["answers"]:
-            an =  n["answer"].lower()
-            answers[an] += 1
-        for a in answers:
-            ans_count[a] += 1
-        cands = list(filter(lambda x: x in union(gqa_answers, uniq), word2alternatives(gt)))
+            an = isOrdinal(n["answer"].lower())
+            if an:
+                an = stripPunc(an, a_type)
+            if an and keepCompound(an) and isOrdinal(an) and an not in IGNORE:
+                answers[an] += 1
         #if not in gqa and question is a number question
-        if a_type == "number" and not cands:
+        if a_type == "number" and gt and gt not in gqa_answers:
             answers = {k:v for k,v in answers.items() if k.isdigit() and k != gt}
             if gt.isdigit():
                 label2score[gt] = 1
@@ -118,15 +145,14 @@ for z in ["val"]:
                 total_trash += 1
             else:
                 qid2num[qid] = label2score
-        else:
+        elif gt:
             #gt check
-            for c in cands:
+            for c in word2alternatives(gt):
                 if c in gqa_answers:
                     vqa_gqa_ans_overlap.add(gt)
                     label2score[gt] = 1
                     break
-                elif isOrdinal(c) and  keepCompound(c) and c not in IGNORE:
-                    uniq_ans.add(isOrdinal(gt))
+                elif isOrdinal(c) and keepCompound(c) and c not in IGNORE:
                     label2score[gt] = 1
                     break
             # other answers check
@@ -136,18 +162,20 @@ for z in ["val"]:
                     vqa_gqa_ans_overlap.add(a)
                     label2score[a] = get_score(f)
                 else:
-                    for w in word2alternatives(a):
-                        if isOrdinal(w) and keepCompound(w) and w not in IGNORE:
-                            uniq_ans.add(isOrdinal(a))
-                            if a not in ans2num:
-                                ans2num[a] = num_ans
-                                num_ans +=1
-                            label2score[a] = get_score(f)
-                            break
+                    if a not in ans2num:
+                        ans2num[a] = num_ans
+                        num_ans +=1
+                    label2score[a] = get_score(f)
+                    break
+
             if not label2score:
                 vqa_trashed_qids.add(qid)
             else:
                 qid2keep[qid] = label2score
+        else:
+            vqa_trashed_qids.add(qid)
+
+valid_ans = {a for a,v in ans_count.items() if v >= MIN}
 
 for split, st, in zip([val_data, train_data], ["val", "train"]):
     for d in split:
@@ -159,8 +187,11 @@ for split, st, in zip([val_data, train_data], ["val", "train"]):
             target = {
                 'question_id': qid,
                 'image_id': img_id,
-                'answer': {isOrdinal(a): v for a, v in qid2keep[qid].items() if ans_count[a] >= MIN},
+                'answer': {a: v for a, v in qid2keep[qid].items() if a in valid_ans},
                 }
+            for a in target["answer"]:
+                if a not in gqa_answers:
+                    uniq_ans.add(a)
             if st == "val":
                 vqa_val_qid2ans.append(target)
             else:
@@ -169,7 +200,7 @@ for split, st, in zip([val_data, train_data], ["val", "train"]):
             target = {
                 'question_id': qid,
                 'image_id': img_id,
-                'answer': {isOrdinal(a): v for a, v  in qid2num[qid].items() if ans_count[a] >= MIN},
+                'answer': {a: v for a, v  in qid2num[qid].items() if a in valid_ans},
                 }
             vqa_number_subset_qids.append(target)
 
@@ -200,5 +231,4 @@ for d, (f, t) in zip(datas, files):
 
 per = (total_trash/total_data)*100
 print("new answers", len(uniq_ans))
-print("overlap", len(vqa_uniq_ans))
 print("p-removed", per)

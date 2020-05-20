@@ -83,6 +83,7 @@ POSMAP = {
         "``":False
         }
 IGNORE = [
+'unanswerable'
 'january',
 'february',
 'march',
