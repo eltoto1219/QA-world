@@ -45,7 +45,6 @@ for split in splits:
         name = split + "_" + subset + "_items"
         data = []
         for qid, v in tqdm(questions.items()):
-
             question = v['question'].lower()
             answer = v['answer'].lower()
             all_answers.add(answer)
@@ -55,13 +54,13 @@ for split in splits:
                 uniq_attrs.remove(answer)
             if answer in uniq_rels:
                 uniq_rels.remove(answer)
-            #try:
-            if ISGQA:
-                image = v["imageId"]
-                img_objs = set([o["name"] for o in graphs[image]])
-            #except:
-            #    print("FAIL")
-            #    continue
+            try:
+                if ISGQA:
+                    image = v["imageId"]
+                    img_objs = set([o["name"] for o in graphs[image]])
+            except:
+                print("FAIL")
+                continue
 
             #get overlapping objects from question annotaitons
             if ISGQA:
@@ -98,7 +97,6 @@ for split in splits:
                             add = False
                     if add:
                         matches.add(obj)
-
 
             #get full answer matches
             answer_matches = set()
@@ -237,7 +235,7 @@ for split in splits:
 
             data.append(target)
 
-    if split == "train" and substet == "balanced":
+    if split == "train" and subset == "balanced":
         makeJson(ambigous_objects, "phase_1/gqa_abg_relations")
         makeJson(qid2normOverlap, "phase_1/gqa_qid2normOverlap")
         makeJson(qid2ambgOverlap, "phase_1/gqa_qid2ambgOverlap")
